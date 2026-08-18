@@ -31,7 +31,9 @@ Clusters flagged in Step 1 are passed to the sub-sampling step.
 
 ### Note on identifier consistency
 The same genome identifier has to travel through the whole pipeline, 
-because the final step joins tree tip labels back to your genome table by exact string match.  ## ## Throughout this pipeline the per-genome table is called {cluster_df} and carries:
+because the final step joins tree tip labels back to your genome table by exact string match.
+
+Throughout this pipeline the per-genome table is called {cluster_df} and carries:
 1. {popPUNK_query_id}: the genome name (used as genome_col)
 2. {popPUNK_cluster}: the cluster assignment (used as cluster_col)
 3. {contig_count}, {contig_N50}: assembly-quality columns used as tie-breakers
@@ -58,7 +60,7 @@ Optional quality columns (e.g. contig_count, n50) may be included for
 tie-breaking during representative selection.
 
 
-#------STEP 0: COMPUTE WITHIN-CLUSTER ALL-VS-ALL DISTANCES (ONLY IF NEEDED)--------------------------------------
+### Step 0: Compute within-cluster all-vs-all distances (only if needed)
 
 ```python
 import os
@@ -77,8 +79,9 @@ dist_long, failed = bw.build_within_cluster_dists(
 dist_long.to_parquet("path/to/within_cluster_dists.parquet")
 ```
 
-#------STEP 1: CHOOSE d* FROM THE DISTANCE REPORT, THEN SELECT REPRESENTATIVES.---------------------------------
-#--------STEP 1a: CHOOSING d*-----------------------------------------------------------------------------------
+### Step 1: Choose d* from the distance report, then select representatives
+
+#### Step 1a: Choosing d*
 
 d* is the core-distance coverage threshold: a representative "covers" every
 cluster member within d* of it. The report summarizes the distance scale;
@@ -107,7 +110,7 @@ plt.savefig("path/to/poppunk_cluster_distance_distribution.svg",
 plt.show()
 ```
 
-##--------STEP 1b: SELECT REPRESENTATIVES BASE ON CHOSEN d*-------------------------------------------------------
+#### Step 1b: Select representatives based on chosen d*
 
 ```python
 ### CHANGE ###
@@ -127,7 +130,7 @@ reps_df.to_csv(f"PATH/TO/cluster_representatives_d={d_star}.csv", index = False)
 ```
 
 
-#------STEP 2: PHYLOGENY-BASED SUB-SAMPLING OF FLAGGED CLUSTERS.--------------------------------------------------
+### Step 2: Phylogeny-based sub-sampling of flagged clusters
 
 Clusters that Step 1 flagged (`flagged_for_snp = True` in `summary.csv`) have
 more internal structure than two representatives can cover. For these, we build
@@ -145,7 +148,7 @@ Isolate flagged clusters.
 flagged = summary_df.loc[summary_df['flagged_for_snp'] == True].copy()
 ```
 
-#--------STEP 2a: BUILD CORE GENE ALIGNMENTS.--------------------------------------------------------------------
+#### Step 2a: Build core gene alignments
 
 *See pan-genome filtering for extracting core genes and writing fasta files.*
 Each cluster should be handled separately for all steps.
@@ -155,13 +158,13 @@ MAFFT v7.526 Example
 mafft --auto --thread 1 core_gene1.fasta > core_gene1.aln
 >> output: core_gene1.aln
 
-#--------STEP 2b: CLEAN ALIGNMENTS.------------------------------------------------------------------------------
+#### Step 2b: Clean alignments
 
 ClipKIT v2.12.0 Example
 clipkit -m smart-gap core_gene1.aln -o core_gene1_clipkit_cleaned.aln
 >> output: core_gene1_clipkit_cleaned.aln
 
-#--------STEP 2c: CREATE CONCATENATION MATRIX.-------------------------------------------------------------------
+#### Step 2c: Create concatenation matrix
 
 Build alignment_list.txt: one clipkit-cleaned alignment path per line, 
 for one cluster (all core genes).
@@ -173,7 +176,7 @@ phykit create_concatenation_matrix -a alignment_list.txt -p phykit_concatenation
             phykit_concatenation_matrix.partition,
   	        phykit_concatenation_matrix.occupancy.
 
-#--------STEP 2d: ML TREE INFERENCE.-----------------------------------------------------------------------------
+#### Step 2d: ML tree inference
 
 Infer one ML tree per cluster from its concatenated matrix.
 ML search only (no bootstrapping): only branch lengths are used downstream,
@@ -187,7 +190,7 @@ raxml-ng --search --msa phykit_concatenation_matrix.fa --model GTR+G --prefix <c
 >> key output: cluster_name.raxml.bestTree  (used in Step 2e)
 
 
-#--------STEP 2e: PATRISTIC DISTANCES AND SELECT REPRESENTATIVES FROM TREE.-------------------------------------
+#### Step 2e: Patristic distances and select representatives from tree
 
 Patristic distances are calculated per cluster from the cluster_name.raxml.bestTree files.
 *These are standard ML branch-length (patristic) distances and are not recombination-corrected.
@@ -195,7 +198,7 @@ A new d* is selected based on per-cluster dynamics.
 Clusters are collapsed based on d* and patristic matrix.
 
 
-#--------STEP 2e.1: CALCULATING PATRISTIC DISTANCES.------------------------------------------------------------
+##### Step 2e.1: Calculating patristic distances
 
 Point these at your RAxML-NG output:
   tree_dir     : directory containing one subdirectory per cluster
@@ -220,7 +223,7 @@ for d in cluster_dirs:                         # one directory per cluster
 patristic_long = pdist.batch_patristic_long(tree_paths)   # Query, Reference, Patristic, cluster
 ```
 
-#--------STEP 2e.2: CHOOSING d*.-------------------------------------------------------------------------------
+##### Step 2e.2: Choosing d*
 
 The plotting helpers below live in `examples/plot_patristic_thresholds.py`
 (import them rather than redefining). All take `patristic_long` — the
@@ -281,7 +284,7 @@ fig.savefig("PATH/TO/all_clusters_sweep_zoom.svg", format="svg", bbox_inches="ti
 The `d_star` set here is the value carried into representative selection in the
 next step — the figures and the actual rep-picking must use the same number.
 
-#--------STEP 2e.3: SELECT REPRESENTATIVES BASED ON CHOSEN D* FROM STEP 2e.2.------------------------------------
+##### Step 2e.3: Select representatives based on chosen d* from Step 2e.2
 
 per cluster: 
 1. build the patristic matrix; 
